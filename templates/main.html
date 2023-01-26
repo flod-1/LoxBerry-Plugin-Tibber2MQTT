@@ -1,0 +1,238 @@
+<h1><TMPL_VAR SETTINGS.HEADING_BASICSETTINGS></h1>
+
+<p><TMPL_VAR SETTINGS.INTRODUCTION></p>
+
+<form id="TibberSettings" onsubmit="return false;">
+
+	<div data-role="fieldcontain">
+		<label for="Main.token"><TMPL_VAR SETTINGS.TOKENLABEL></label>
+		<input name="Main.token" id="Main.token" type="text" />
+		<p class="hint"><TMPL_VAR SETTINGS.TOKENHINT></p>
+	</div>
+		
+	<div data-role="fieldcontain">
+		<fieldset data-role="controlgroup">
+			<legend><TMPL_VAR SETTINGS.ABSOLUTEPRICE_HINT></legend>
+			<input type="checkbox" name="AbsolutePrice" id="AbsolutePrice">
+			<label for="AbsolutePrice"><TMPL_VAR SETTINGS.ABSOLUTEPRICE></label>
+			<input type="checkbox" name="AbsolutePrices.total" id="AbsolutePrices.total" disabled="disabled">
+			<label for="AbsolutePrices.total"><TMPL_VAR SETTINGS.ABSOLUTEPRICE_TOTAL></label>
+			<input type="checkbox" name="AbsolutePrices.energy" id="AbsolutePrices.energy" class="AbsolutePrices">
+			<label for="AbsolutePrices.energy"><TMPL_VAR SETTINGS.ABSOLUTEPRICE_ENERGY></label>
+			<input type="checkbox" name="AbsolutePrices.tax" id="AbsolutePrices.tax" class="AbsolutePrices">
+			<label for="AbsolutePrices.tax"><TMPL_VAR SETTINGS.ABSOLUTEPRICE_TAX></label>
+			<input type="checkbox" name="AbsolutePrices.level" id="AbsolutePrices.level" class="AbsolutePrices">
+			<label for="AbsolutePrices.level"><TMPL_VAR SETTINGS.ABSOLUTEPRICE_LEVEL></label>
+		</fieldset>
+	<div>
+
+	<div data-role="fieldcontain">
+		<fieldset data-role="controlgroup">
+			<legend><TMPL_VAR SETTINGS.RELATIVEPRICE_HINT></legend>
+			<input type="checkbox" name="RelativePrice" id="RelativePrice">
+			<label for="RelativePrice"><TMPL_VAR SETTINGS.RELATIVEPRICE></label>
+			<input type="checkbox" name="RelativePrices.total" id="RelativePrices.total" disabled="disabled">
+			<label for="RelativePrices.total"><TMPL_VAR SETTINGS.RELATIVEPRICE_TOTAL></label>
+			<input type="checkbox" name="RelativePrices.energy" id="RelativePrices.energy" class="RelativePrices">
+			<label for="RelativePrices.energy"><TMPL_VAR SETTINGS.RELATIVEPRICE_ENERGY></label>
+			<input type="checkbox" name="RelativePrices.tax" id="RelativePrices.tax" class="RelativePrices">
+			<label for="RelativePrices.tax"><TMPL_VAR SETTINGS.RELATIVEPRICE_TAX></label>
+			<input type="checkbox" name="RelativePrices.level" id="RelativePrices.level" class="RelativePrices">
+			<label for="RelativePrices.level"><TMPL_VAR SETTINGS.RELATIVEPRICE_LEVEL></label>
+		</fieldset>
+	<div>
+	
+	<div data-role="fieldcontain">
+		<fieldset data-role="controlgroup">
+			<legend><TMPL_VAR SETTINGS.MINMAXPRICES_HINT></legend>	
+			<input type="checkbox" name="MinPrice" id="MinPrice">
+			<label for="MinPrice"><TMPL_VAR SETTINGS.PRICE_MIN></label>
+			<input type="checkbox" name="MaxPrice" id="MaxPrice">
+			<label for="MaxPrice"><TMPL_VAR SETTINGS.PRICE_MAX></label>
+		</fieldset>
+	<div>
+	
+</form> 
+<br />
+<div style="display:flex;align-items:center;justify-content:center;">
+	<button class="ui-btn" id="saveaction" data-inline="true" disabled="disabled"><TMPL_VAR SETTINGS.SAVESETTINGS></button>
+	<button class="ui-btn" id="forcepricerequest" data-inline="true"><TMPL_VAR SETTINGS.FORCEPRICEREQ></button>
+	<button class="ui-btn" id="forcecleancache" data-inline="true"><TMPL_VAR SETTINGS.FORCECLEANCACHE></button>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:center;" id="ajaxresult"></div>
+ 
+<script>
+	var cfg;
+
+	$(document).ready(function(){
+		// Read config
+		$.ajax('/admin/system/ajax/ajax-generic.php?file=LBPCONFIG/tibber2mqtt/config.json&read')
+		.done(function(response) {
+			cfg = JSON.parse(response);
+			
+			//Apply config to fields
+			for(settingarea in cfg){
+				if(typeof(cfg[settingarea]) != 'object'){
+					if($("#"+settingarea).attr('type') == "checkbox") {
+						$("#"+settingarea).prop('checked', cfg[settingarea]);
+					}else {
+						$("#"+settingarea).val(cfg[settingarea]);
+					}
+				}else{
+					for(var setting in cfg[settingarea]) {
+						if($("#"+settingarea+"\\."+setting).attr('type') == "checkbox") {
+								$("#"+settingarea+"\\."+setting).prop('checked', cfg[settingarea][setting]);
+						}else {
+							$("#"+settingarea+"\\."+setting).val(cfg[settingarea][setting]);
+						}
+					}
+				}
+			}
+			
+			//Check absolute and relative price setting
+			if(cfg.AbsolutePrice == false){
+				$(".AbsolutePrices").attr("disabled", true);
+			}
+			if(cfg.RelativePrice == false){
+				$(".RelativePrices").attr("disabled", true);
+			}			
+			
+			//Check if token was part of config, otherwise deactivate force pricerequest button
+			if(cfg.Main.token == ""){
+				$("#forcepricerequest").attr("disabled", true);
+			}
+			
+			//If no total price selected, Min/Max can't be used
+			if(cfg.AbsolutePrice == false && cfg.RelativePrice == false){
+				$("#MinPrice, #MaxPrice").attr("disabled", true).prop("checked", false);
+			}			
+			
+			//Refresh Checkboxes to show that they are checked
+			$('input:checkbox').checkboxradio('refresh');
+		})
+
+	});	
+		
+	$('input').change(function(event) {
+		//Keep cfg array up to date
+		var idarr = $(this).attr('id').split(".");
+		$("#ajaxresult").css("color", "blue").html("<TMPL_VAR SETTINGSJS.UNSAVED_CHANGES>");
+		$("#saveaction").attr("disabled", false);
+		$("#forcepricerequest").attr("disabled", true);
+		
+		if(idarr.length == 1){
+			if($(this).attr('type') == "checkbox") {
+				cfg[idarr[0]] = $(this).prop('checked');
+			}else{
+				cfg[idarr[0]] = $(this).val();
+			}
+		}else{
+			if($(this).attr('type') == "checkbox") {
+				cfg[idarr[0]][idarr[1]] = $(this).prop('checked');
+			}else{
+				cfg[idarr[0]][idarr[1]] = $(this).val();
+			}	
+		}
+		
+		//Check if token was changed to zero and if so, deactivate force pricerequest button
+		if(cfg.Main.token == ""){
+			$("#forcepricerequest").attr("disabled", true);
+		}
+	});
+	
+	$('#AbsolutePrice, #RelativePrice').change(function(event) {
+	//Check absolute and relative price setting and update UI
+		if(cfg.AbsolutePrice == false){
+			$(".AbsolutePrices").attr("disabled", true).prop("checked", false).trigger("change");
+			$("#AbsolutePrices\\.total").prop("checked", false).trigger("change");
+		}else{
+			$(".AbsolutePrices").attr("disabled", false);
+			$("#AbsolutePrices\\.total").prop("checked", true).trigger("change");
+		}
+		if(cfg.RelativePrice == false){
+			$(".RelativePrices").attr("disabled", true).prop("checked", false).trigger("change");
+			$("#RelativePrices\\.total").prop("checked", false).trigger("change");
+		}else{
+			$(".RelativePrices").attr("disabled", false);
+			$("#RelativePrices\\.total").prop("checked", true).trigger("change");
+		}	
+		
+		//If no total price selected, Min/Max can't be used
+		if(cfg.AbsolutePrice == false && cfg.RelativePrice == false){
+			$("#MinPrice, #MaxPrice").attr("disabled", true).prop("checked", false).trigger("change");
+		}else{
+			$("#MinPrice, #MaxPrice").attr("disabled", false);
+		}
+		
+		//Refresh Checkboxes to show that they are checked
+		$('input:checkbox').checkboxradio('refresh');
+	});
+	
+	$("#saveaction").click(function(){
+		$("#saveaction").attr("disabled", true);
+		$.ajax('/admin/system/ajax/ajax-generic.php?file=LBPCONFIG/tibber2mqtt/config.json&write', { 
+			type: 'POST',
+			dataType: 'json',
+			data: JSON.stringify(cfg)
+		})
+		.done(function() {
+			//Also delete cached file, as saved values may no longer fit
+			$.ajax('process.php', { 
+				type: 'POST',
+				data: {action: 'clearcache'}
+			})
+			.done(function() {
+				$("#ajaxresult").css("color", "green").html("<TMPL_VAR SETTINGSJS.SAVING_SUCCESS>");
+				$("#forcepricerequest").attr("disabled", false);
+			})
+			.fail(function() {
+				$("#ajaxresult").css("color", "red").html("<TMPL_VAR SETTINGSJS.SAVINGCACHE_ERROR>");
+			})
+		})
+		.fail(function() {
+			$("#ajaxresult").css("color", "red").html("<TMPL_VAR SETTINGSJS.SAVING_ERROR>");
+		})
+		.always(function() {
+			$("#saveaction").attr("disabled", false);
+		});
+	});
+	
+	$("#forcepricerequest").click(function(){
+		$("#forcepricerequest").attr("disabled", true);
+		
+		$.ajax('process.php', { 
+			type: 'POST',
+			data: {action: 'forcepricerequest'}
+		})
+		.done(function(resp) {
+			$("#ajaxresult").css("color", "green").html("<TMPL_VAR SETTINGSJS.FORCEPRICES_SUCCESS>");
+		})
+		.fail(function(resp) {
+			$("#ajaxresult").css("color", "red").html("<TMPL_VAR SETTINGSJS.FORCEPRICES_ERROR>");
+		})
+		.always(function(resp) {
+			$("#forcepricerequest").attr("disabled", false);
+		});
+	});
+	
+	$("#forcecleancache").click(function(){
+		$("#forcecleancache").attr("disabled", true);
+		
+		$.ajax('process.php', { 
+			type: 'POST',
+			data: {action: 'clearcache'}
+		})
+		.done(function(resp) {
+			$("#ajaxresult").css("color", "green").html("<TMPL_VAR SETTINGSJS.FORCECLEANCACHE_SUCCESS>");
+		})
+		.fail(function(resp) {
+			$("#ajaxresult").css("color", "red").html("<TMPL_VAR SETTINGSJS.FORCECLEANCACHE_ERROR>");
+		})
+		.always(function(resp) {
+			$("#forcecleancache").attr("disabled", false);
+		});
+	});
+	
+</script>
+

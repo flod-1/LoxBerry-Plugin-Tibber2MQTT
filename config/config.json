@@ -1,0 +1,21 @@
+{
+	"Main": {
+		"token": ""
+	},
+	"AbsolutePrice": false,
+	"AbsolutePrices": {
+		"total": false,
+		"energy": false,
+		"tax": false,
+		"level": false
+	},
+	"RelativePrice": true,
+	"RelativePrices": {
+		"total": true,
+		"energy": false,
+		"tax": false,
+		"level": false
+	},
+	"MinPrice": false,
+	"MaxPrice": false	
+}

@@ -1,0 +1,2 @@
+#minute hour day_of_month month day_of_week user command
+1 * * * * loxberry /usr/bin/php $LBPHTMLAUTH/tibber2mqtt/process.php forcepricerequest >/dev/null 2>&1
