@@ -9,7 +9,7 @@ define ("CacheFile", LBPDATADIR."/pricecache.json");
 
 //Start logging
 $log = LBLog::newLog(["name" => "Process.php"]);
-LOGINF("Script called.");
+LOGSTART("Script called.");
 
 //Decide for and run function
 $requestedAction = "";
@@ -25,11 +25,23 @@ if(isset($argv)){
 switch ($requestedAction){
 	case "forcepricerequest":
 		forcepricerequest();
+		LOGEND("Processing finished.");
 		break;
 	case "getconsumptions":
 		break;	
+	case "getconfigasjson":
+		LOGTITLE("getconfigasjson");
+		getconfigasjson(true);
+		LOGEND("Processing finished.");
+		break;
+	case "savejsonasconfig":
+		LOGTITLE("savejsonasconfig");
+		savejsonasconfig($_POST["configToSave"]);
+		LOGEND("Processing finished.");
+		break;
 	case "clearcache":
 		clearcache();
+		LOGEND("Processing finished.");
 		break;
 	default:
 		http_response_code(404);
@@ -39,9 +51,53 @@ switch ($requestedAction){
 }
 
 //Function definitions
+function getconfigasjson($output = false){
+	LOGINF("Switched to getconfigasjson");
+	
+	//Get Config
+	$tb_conf = new LBJSON(LBPCONFIGDIR."/config.json");
+	LOGDEB("Retrieved config:".json_encode($tb_conf));
+	
+	if($output){
+		echo json_encode($tb_conf->slave); 
+		return;
+	}else{
+		return $tb_conf;
+	}
+}
+
+function savejsonasconfig($config){
+	LOGINF("Switched to savejsonasconfig");
+	
+	if(!isset($config) || $config == "" || $config == null || $config == "null"){
+		http_response_code(404);
+		notify(LBPCONFIGDIR, "tibber2mqtt", "Saveconfig has been called without valid config.", "error");
+		LOGERR("Saveconfig has been called without valid config.");
+		return;
+	}
+	
+	LOGDEB("Config to save:".$config);
+	
+	//Get Config
+	$tb_conf = getconfigasjson();
+	
+	// Change a value 
+	$tb_conf->slave = json_decode($config);
+	
+	LOGDEB("Updated config object:".json_encode($tb_conf));
+	
+	// Write all changes
+	$tb_conf->write();
+	
+	//End in same way as ajax-generic of LB3
+	echo json_encode($tb_conf->slave); 
+	return;
+}
+
 function forcepricerequest(){	
 	LOGINF("Switched to forcepricerequest");
-
+	LOGTITLE("forcepricerequest");
+	
 	//Default PriceSetting String
 	$query_prices = "{
 		viewer {
@@ -61,8 +117,8 @@ function forcepricerequest(){
 	}";
 	
 	//Get Config
-	$tb_conf = new LBJSON(LBPCONFIGDIR."/config.json");
-	$tb_config = $tb_conf->slave;
+	$tb_config = getconfigasjson();
+	$tb_config = $tb_config->slave;
 	
 	if(!isset($tb_config->Main->token) OR $tb_config->Main->token == ""){
 		//Abort, as token not available.
@@ -97,11 +153,12 @@ function forcepricerequest(){
 	if (file_exists(CacheFile) && date ("d.m.Y", filemtime(CacheFile)) == date ("d.m.Y") && (date("H") < 13 || (date("H") >= 13 && date("H", filemtime(CacheFile)) >= 13))){
 		//Use cache value
 		$cachedData = json_decode(file_get_contents(CacheFile), TRUE); 
-		if(is_array($cachedData)) $processedPrices = $cachedData;
+		if(is_array($cachedData) && $cachedData["tomorrow"][0]["total"] != "") $processedPrices = $cachedData; //Double check first value of tomorrow, to ensure that prices are retrieved again, in case API did not deliver at 13:00 o'clock.
 	}
 	
 	//If value has not been retrieved, go ahead with reading from API
 	if(!isset($processedPrices)){
+		LOGINF("No cached data, retriev from API");
 
 		$reqValuesAllString = "startsAt";
 		$reqValArrAll = array_unique(array_merge($reqAbsoluteValArr, $reqRelativeValArr));
@@ -112,6 +169,7 @@ function forcepricerequest(){
 
 		//Build GraphQL String
 		$datas = json_encode(['query' => str_replace("%placeholder%", $reqValuesAllString, $query_prices)]);
+		LOGDEB("Query Array for API:".$datas);
 
 		$ch =  curl_init(Endpoint);
 		curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
@@ -136,6 +194,8 @@ function forcepricerequest(){
 			LOGERR("Tibber sent error message: ".json_encode($res["errors"]));
 			return;
 		}
+		
+		LOGDEB("Data retrieved from API:".json_encode($res));
 			
 		//Define empty arrays for following processing
 		$processedPrices["today"] = array();
@@ -146,13 +206,16 @@ function forcepricerequest(){
 			foreach($reqValArrAll as $requestedValueKey){ //
 				//Loop through all received prices and move - sorted by absolute hours - into processedPrices array
 				foreach($pricesofDay as $priceRecord){
+					if($tb_config->SendasCents == true){
+						$priceRecord[$requestedValueKey] = $priceRecord[$requestedValueKey]*100;
+					}
 					$processedPrices[$keyofDay][(int)date("H", strtotime($priceRecord["startsAt"]))][$requestedValueKey] = $priceRecord[$requestedValueKey];
 				}
 				
 				//If no prices for $keyofDay (Today/tomorrow) have been received, set processedPrices array back to empty
 				if(count($pricesofDay) == 0){
 					for ($i=0; $i < 24; $i++){
-						$processedPrices[$keyofDay][(int)date("H", strtotime($priceRecord["startsAt"]))][$requestedValueKey] = "";
+						$processedPrices[$keyofDay][$i][$requestedValueKey] = "";
 					}
 				}
 			}
@@ -160,6 +223,7 @@ function forcepricerequest(){
 		
 		//Save new version of cached file, as it has been reloaded
 		file_put_contents(CacheFile, json_encode($processedPrices)); 
+		LOGDEB("Data written to cache:".json_encode($processedPrices));
 	}
 	
 	//Build relative array, if requested
@@ -253,12 +317,11 @@ function forcepricerequest(){
 	}
 	
 	$mqtt->close();
-	LOGEND("Processing terminated.");
 }
 
 function clearcache(){
 	LOGINF("Switched to clearcache");
+	LOGTITLE("clearcache");
 	file_put_contents(CacheFile, ""); 
-	LOGEND("Processing terminated.");
 }
 ?>

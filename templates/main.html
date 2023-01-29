@@ -52,6 +52,14 @@
 		</fieldset>
 	<div>
 	
+	<div data-role="fieldcontain">
+		<fieldset data-role="controlgroup">
+			<legend><TMPL_VAR SETTINGS.SENDCENTS_HINT></legend>	
+			<input type="checkbox" name="SendasCents" id="SendasCents">
+			<label for="SendasCents"><TMPL_VAR SETTINGS.SENDCENTS></label>
+		</fieldset>
+	<div>
+	
 </form> 
 <br />
 <div style="display:flex;align-items:center;justify-content:center;">
@@ -64,10 +72,24 @@
  
 <script>
 	var cfg;
-
+	var lbversion = '<TMPL_VAR LBVERSION>';
+	var jsonbackend_read = '/admin/system/ajax/ajax-generic.php?file=LBPCONFIG/tibber2mqtt/config.json&read';
+	var jsonbackend_write = '/admin/system/ajax/ajax-generic.php?file=LBPCONFIG/tibber2mqtt/config.json&write';
+	
 	$(document).ready(function(){
+		//Determine json backend based on version and pre-fill variables
+		var poststring_read = "";
+		if(lbversion.startsWith("2")){
+			jsonbackend_read = 'process.php';
+			jsonbackend_write = 'process.php';
+			poststring_read = {action: 'getconfigasjson'};
+		}
+	
 		// Read config
-		$.ajax('/admin/system/ajax/ajax-generic.php?file=LBPCONFIG/tibber2mqtt/config.json&read')
+		$.ajax(jsonbackend_read, { 
+			type: 'POST',
+			data: poststring_read
+		})
 		.done(function(response) {
 			cfg = JSON.parse(response);
 			
@@ -170,11 +192,18 @@
 	});
 	
 	$("#saveaction").click(function(){
+		//Fill post String based on LB version | url variable set in document ready
+		if(lbversion.startsWith("2")){
+			poststring_write = {action: 'savejsonasconfig', configToSave: JSON.stringify(cfg)};
+		}else{
+			poststring_write = JSON.stringify(cfg);
+		}
+		
 		$("#saveaction").attr("disabled", true);
-		$.ajax('/admin/system/ajax/ajax-generic.php?file=LBPCONFIG/tibber2mqtt/config.json&write', { 
+		$.ajax(jsonbackend_write, { 
 			type: 'POST',
 			dataType: 'json',
-			data: JSON.stringify(cfg)
+			data: poststring_write
 		})
 		.done(function() {
 			//Also delete cached file, as saved values may no longer fit

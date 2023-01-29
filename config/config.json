@@ -17,5 +17,6 @@
 		"level": false
 	},
 	"MinPrice": false,
-	"MaxPrice": false	
+	"MaxPrice": false,
+	"SendasCents": true	
 }
