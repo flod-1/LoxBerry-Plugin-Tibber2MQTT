@@ -246,7 +246,7 @@ function forcepricerequest(){
 
 	//	Build Min Max if required
 	if($tb_config->MinPrice == true || $tb_config->MaxPrice == true){
-		$minPrice = $maxPrice = $processedPrices["today"][0]["total"];
+		$minPrice = $maxPrice = $processedPrices["today"][(int)date("H")]["total"];
 		$minPriceAt = $maxPriceAt = 0;
 		
 		$tempKeyofDay = "today";
