@@ -206,9 +206,36 @@ function forcepricerequest(){
 			foreach($reqValArrAll as $requestedValueKey){ //
 				//Loop through all received prices and move - sorted by absolute hours - into processedPrices array
 				foreach($pricesofDay as $priceRecord){
-					if($tb_config->SendasCents == true){
-						$priceRecord[$requestedValueKey] = $priceRecord[$requestedValueKey]*100;
+					
+					//Provide as cents instead of Euro, except for PriceLevel
+					if($tb_config->SendasCents == true && $requestedValueKey != "level"){
+                        $priceRecord[$requestedValueKey] = $priceRecord[$requestedValueKey]*100;
+                    }
+					
+					//Adjust LEVEL data to ensure compatibility with Loxone
+                    if($requestedValueKey == "level"){
+						switch ($priceRecord[$requestedValueKey]){
+							case "VERY_CHEAP":
+								$priceRecord[$requestedValueKey] = -2;
+								break;
+							case "CHEAP":
+								$priceRecord[$requestedValueKey] = -1;
+								break;						
+							case "NORMAL":
+								$priceRecord[$requestedValueKey] = 0;
+                                break;
+							case "EXPENSIVE":
+								$priceRecord[$requestedValueKey] = 1;
+								break;
+							case "VERY_EXPENSIVE":
+								$priceRecord[$requestedValueKey] = 2;
+								break;
+							default:
+								$priceRecord[$requestedValueKey] = 9;// ERROR
+								break;
+						}
 					}
+						
 					$processedPrices[$keyofDay][(int)date("H", strtotime($priceRecord["startsAt"]))][$requestedValueKey] = $priceRecord[$requestedValueKey];
 				}
 				
