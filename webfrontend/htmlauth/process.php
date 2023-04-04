@@ -43,6 +43,10 @@ switch ($requestedAction){
 		clearcache();
 		LOGEND("Processing finished.");
 		break;
+	case "gethomes":
+		gethomes();
+		LOGEND("Processing finished.");
+		break;
 	default:
 		http_response_code(404);
 		notify(LBPCONFIGDIR, "tibber2mqtt", "process.php has been called without parameter.", "error");
@@ -99,7 +103,7 @@ function forcepricerequest(){
 	LOGTITLE("forcepricerequest");
 	
 	//Default PriceSetting String
-	$query_prices = "{
+	$query_prices = '{
 		viewer {
 			homes {
 				currentSubscription {
@@ -114,7 +118,25 @@ function forcepricerequest(){
 				}
 			}
 		}
-	}";
+	}';
+	
+	//Default PriceSetting String for Single Home
+	$query_prices_single_home = '{
+		viewer {
+			home(id: "%homeid%") {
+				currentSubscription {
+					priceInfo {
+						today {
+							%placeholder%
+						}
+						tomorrow {
+							%placeholder%
+						}
+					}
+				}
+			}
+		}
+	}';
 	
 	//Get Config
 	$tb_config = getconfigasjson();
@@ -167,42 +189,36 @@ function forcepricerequest(){
 			$reqValuesAllString .= "\r\n".$reqValArrAll[$i];
 		}
 
-		//Build GraphQL String
-		$datas = json_encode(['query' => str_replace("%placeholder%", $reqValuesAllString, $query_prices)]);
+		//Check if single home call or normal call 
+		if(!isset($tb_config->Main->home) OR $tb_config->Main->home == '' OR $tb_config->Main->home == null){
+			//Build GraphQL String		
+			$datas = json_encode(['query' => str_replace("%placeholder%", $reqValuesAllString, $query_prices)]);
+		}else{
+			//Build GraphQL String		
+			$datas = json_encode(['query' => str_replace(array("%placeholder%", "%homeid%"), array($reqValuesAllString, $tb_config->Main->home), $query_prices_single_home)]);
+		}
 		LOGDEB("Query Array for API:".$datas);
 
-		$ch =  curl_init(Endpoint);
-		curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
-		curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-type: application/json'));
-		curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BEARER);
-		curl_setopt($ch, CURLOPT_XOAUTH2_BEARER, $tb_config->Main->token);
-		curl_setopt($ch, CURLOPT_POST, TRUE);
-		curl_setopt($ch, CURLOPT_POSTFIELDS, $datas);
-
-		$results = curl_exec($ch);
-		if ($results == false){
-			http_response_code(404);
-			notify(LBPCONFIGDIR, "tibber2mqtt", "Error in CURL Execution", "error");
-			LOGERR("Error in CURL Execution: ".curl_error($results));
+		$res = callAPI($tb_config->Main->token, $datas);
+		if ($res == false){
 			return;
-		}
-		//Decode json result string to array
-		$res = json_decode($results, TRUE);
-		if(array_key_exists("errors", $res)){
-			http_response_code(404);
-			notify(LBPCONFIGDIR, "tibber2mqtt", "Tibber sent error message, see log for details.", "error");
-			LOGERR("Tibber sent error message: ".json_encode($res["errors"]));
-			return;
-		}
-		
+		}	
 		LOGDEB("Data retrieved from API:".json_encode($res));
 			
 		//Define empty arrays for following processing
 		$processedPrices["today"] = array();
 		$processedPrices["tomorrow"] = array();
 		
+		//Check if single home or not and build result array
+		if(!isset($tb_config->Main->home) OR $tb_config->Main->home == '' OR $tb_config->Main->home == null){	
+			$retrieved_prices = $res["data"]["viewer"]["homes"][0]["currentSubscription"]["priceInfo"];
+		}else{
+			//Build GraphQL String		
+			$retrieved_prices = $res["data"]["viewer"]["home"][0]["currentSubscription"]["priceInfo"];
+		}
+		
 		//Loop through received data
-		foreach ($res["data"]["viewer"]["homes"][0]["currentSubscription"]["priceInfo"] as $keyofDay => $pricesofDay){
+		foreach ($retrieved_prices as $keyofDay => $pricesofDay){
 			foreach($reqValArrAll as $requestedValueKey){ //
 				//Loop through all received prices and move - sorted by absolute hours - into processedPrices array
 				foreach($pricesofDay as $priceRecord){
@@ -351,4 +367,68 @@ function clearcache(){
 	LOGTITLE("clearcache");
 	file_put_contents(CacheFile, ""); 
 }
+
+function gethomes(){
+	LOGINF("Switched to gethomes");
+	LOGTITLE("gethomes");
+	
+	//Get Config
+	$tb_config = getconfigasjson();
+	$tb_config = $tb_config->slave;
+	
+	if(!isset($tb_config->Main->token) OR $tb_config->Main->token == ""){
+		//Abort, as token not available.
+		http_response_code(404);
+		notify(LBPCONFIGDIR, "tibber2mqtt", "No Tibber token saved in settings.", "error");
+		LOGERR("No Tibber token saved in settings");
+		return;
+	}
+	
+	//GetHomes Call String
+	$gethomes_call = '{
+		viewer {
+			homes {
+				id
+				appNickname
+			}
+		}
+	}';
+	
+	$homes = callAPI($tb_config->Main->token, json_encode(['query' => $gethomes_call]));
+	if($homes == false){
+		return;
+	}
+
+	echo json_encode($homes["data"]["viewer"]["homes"]);
+}
+
+function callAPI($token, $postdata){
+	LOGDEB("POSTDATA for Tibber API Call:".$postdata);
+	
+	$ch =  curl_init(Endpoint);
+	curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+	curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-type: application/json'));
+	curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BEARER);
+	curl_setopt($ch, CURLOPT_XOAUTH2_BEARER, $token);
+	curl_setopt($ch, CURLOPT_POST, TRUE);
+	curl_setopt($ch, CURLOPT_POSTFIELDS, $postdata);
+
+	$results = curl_exec($ch);
+	if ($results == false){
+		http_response_code(404);
+		notify(LBPCONFIGDIR, "tibber2mqtt", "Error in CURL Execution", "error");
+		LOGERR("Error in CURL Execution: ".curl_error($results));
+		return false;
+	}
+	//Decode json result string to array
+	$res = json_decode($results, TRUE);
+	if(array_key_exists("errors", $res) || array_key_exists("error", $res)){
+		http_response_code(404);
+		notify(LBPCONFIGDIR, "tibber2mqtt", "Tibber sent error message, see log for details.", "error");
+		LOGERR("Tibber sent error message ERRORS: ".json_encode($res["errors"])."| ERROR: ".json_encode($res["error"]));
+		return false;
+	}
+	
+	return $res;
+}	
 ?>

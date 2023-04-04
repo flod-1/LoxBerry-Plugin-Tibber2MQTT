@@ -7,7 +7,12 @@
 	<div data-role="fieldcontain">
 		<label for="Main.token"><TMPL_VAR SETTINGS.TOKENLABEL></label>
 		<input name="Main.token" id="Main.token" type="text" />
-		<p class="hint"><TMPL_VAR SETTINGS.TOKENHINT></p>
+		<p class="hint" id="hint_token"><TMPL_VAR SETTINGS.TOKENHINT></p>
+		<label for="Main.home"><TMPL_VAR SETTINGS.HOMELABEL></label>
+		<select name="Main.home" id="Main.home">
+			<option value="0" selected="selected"><TMPL_VAR SETTINGS.SELECTHOME></option>
+		</select>
+		<p class="hint" id="hint_home"></p>
 	</div>
 		
 	<div data-role="fieldcontain">
@@ -120,9 +125,48 @@
 				$(".RelativePrices").attr("disabled", true);
 			}			
 			
-			//Check if token was part of config, otherwise deactivate force pricerequest button
+			//Check if token was part of config
 			if(cfg.Main.token == ""){
+				//Deactivate force pricerequest button
 				$("#forcepricerequest").attr("disabled", true);
+			}else{
+				//Get homes from API and select
+				$.ajax('process.php', { 
+					type: 'POST',
+					data: {action: 'gethomes'}
+				})
+				.done(function(resp) {
+					homes = JSON.parse(resp);
+					
+					if(homes.length > 0){
+						//Apply config to fields
+						for(home in homes){
+							$("#Main\\.home").append($('<option></option>', {
+								value: homes[home]["id"],
+								text: homes[home]["appNickname"]
+							}));
+						}
+					
+						if(cfg["Main"]["home"] != null){
+							//Set saved value from config to select element
+							$("#Main\\.home").val(cfg["Main"]["home"]);
+						}
+						
+						//Refresh
+						$("#Main\\.home").selectmenu("refresh");
+						
+						//If value of config does not match the available homes, ask for selection.
+						if($("#Main\\.home").val() != cfg["Main"]["home"]){
+							$("#hint_home").css("color", "blue").html("<TMPL_VAR SETTINGSJS.HINT_HOMEREQUIRED>");
+						}
+					}else{
+						$("#hint_home").css("color", "red").html("<TMPL_VAR SETTINGSJS.HINT_HOMEERROR>");
+					}
+					
+				})
+				.fail(function(resp) {
+					$("#hint_home").css("color", "red").html("<TMPL_VAR SETTINGSJS.HINT_HOMEERROR>");
+				})
 			}
 			
 			//If no total price selected, Min/Max can't be used
@@ -136,7 +180,7 @@
 
 	});	
 		
-	$('input').change(function(event) {
+	$('input, select').change(function(event) {
 		//Keep cfg array up to date
 		var idarr = $(this).attr('id').split(".");
 		$("#ajaxresult").css("color", "blue").html("<TMPL_VAR SETTINGSJS.UNSAVED_CHANGES>");
@@ -156,9 +200,16 @@
 				cfg[idarr[0]][idarr[1]] = $(this).val();
 			}	
 		}
-		
-		//Check if token was changed to zero and if so, deactivate force pricerequest button
-		if(cfg.Main.token == ""){
+	});
+	
+	$('#Main\\.token').change(function(event) {
+		//Home selection only possible with unchanged token
+		$("#Main\\.home").val("").selectmenu("refresh").selectmenu("disable").trigger("change");
+		$("#hint_home").css("color", "red").html("<TMPL_VAR SETTINGSJS.HINT_HOMESAVE>");
+	
+		//Check if token was changed to zero in addition.
+		//If so, deactivate force pricerequest button additionally.
+		if($(this) == ""){
 			$("#forcepricerequest").attr("disabled", true);
 		}
 	});
@@ -192,6 +243,11 @@
 	});
 	
 	$("#saveaction").click(function(){
+	
+		if(cfg.Main.home == 0){
+			cfg.Main.home = null;
+		}
+		
 		//Fill post String based on LB version | url variable set in document ready
 		if(lbversion.startsWith("2")){
 			poststring_write = {action: 'savejsonasconfig', configToSave: JSON.stringify(cfg)};

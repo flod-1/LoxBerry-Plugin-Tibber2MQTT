@@ -1,6 +1,7 @@
 {
 	"Main": {
-		"token": ""
+		"token": "",
+		"home": ""
 	},
 	"AbsolutePrice": false,
 	"AbsolutePrices": {
