@@ -214,7 +214,7 @@ function forcepricerequest(){
 			$retrieved_prices = $res["data"]["viewer"]["homes"][0]["currentSubscription"]["priceInfo"];
 		}else{
 			//Build GraphQL String		
-			$retrieved_prices = $res["data"]["viewer"]["home"][0]["currentSubscription"]["priceInfo"];
+			$retrieved_prices = $res["data"]["viewer"]["home"]["currentSubscription"]["priceInfo"];
 		}
 		
 		//Loop through received data
